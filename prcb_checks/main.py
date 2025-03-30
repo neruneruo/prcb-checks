@@ -1,4 +1,4 @@
-"""prcb-checks - Invoke GitHub Checks API"""
+"""checkruns.py - GitHub Checks APIを実行する"""
 
 # https://docs.github.com/ja/rest/checks/runs?apiVersion=2022-11-28#create-a-check-run
 # checkruns.py <name> <status:conclusion> <title> <summary> <text>
@@ -28,8 +28,18 @@ github_app_id = os.environ["GITHUB_APP_ID"]
 github_app_installation_id = os.environ["GITHUB_APP_INSTALLATION_ID"]
 
 # リポジトリの情報
-# "github.com/" で分割し、右側の部分（可変部分）を取得
-_, _, full_repository_name = os.environ["CODEBUILD_SRC_DIR"].rpartition("github.com/")
+codebuild_initiator = os.environ["CODEBUILD_INITIATOR"]
+if codebuild_initiator.startswith("codepipeline/"):
+    # AWS CodePipelineから呼び出した場合、パイプラインのステージ環境変数から取得
+    full_repository_name = os.environ["CODEPIPELINE_FULL_REPOSITORY_NAME"]
+elif codebuild_initiator.startswith("GitHub-Hookshot/"):
+    # AWS CodeBuildから呼び出した場合、"github.com/" で分割し、右側の部分（可変部分）を取得
+    _, _, full_repository_name = os.environ["CODEBUILD_SRC_DIR"].rpartition(
+        "github.com/"
+    )
+else:
+    print(f"Error: Unsupported CODEBUILD_INITIATOR: {codebuild_initiator}")
+    sys.exit(1)
 
 # AWS Secrets Managerのシークレット取得
 session = boto3.session.Session()
