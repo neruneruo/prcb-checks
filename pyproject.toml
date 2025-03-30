@@ -23,3 +23,7 @@ repository = "https://github.com/neruneruo/prcb-checks"
 
 [project.scripts]
 prcb-checks = "prcb_checks.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = ["images"]
