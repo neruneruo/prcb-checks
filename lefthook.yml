@@ -1,0 +1,5 @@
+pre-commit:
+  parallel: true
+  commands:
+    trivy:
+      run: trivy fs --scanners secret --exit-code 1 ./
