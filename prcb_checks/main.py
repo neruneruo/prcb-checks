@@ -1,7 +1,7 @@
-"""checkruns.py - GitHub Checks APIを実行する"""
+"""PRCB checks - Invoke GitHub Checks API"""
 
 # https://docs.github.com/ja/rest/checks/runs?apiVersion=2022-11-28#create-a-check-run
-# checkruns.py <name> <status:conclusion> <title> <summary> <text>
+# checkruns.py <n> <status:conclusion> <title> <summary> <text>
 # name      : The name of the check. For example, "code-coverage".
 # status    : The current status of the check run. Only GitHub Actions can set a status of waiting, pending, or requested.
 #             Default: queue
@@ -23,35 +23,46 @@ import boto3
 from botocore.exceptions import ClientError
 import jwt
 
-# GitHub Appの情報
-github_app_id = os.environ["GITHUB_APP_ID"]
-github_app_installation_id = os.environ["GITHUB_APP_INSTALLATION_ID"]
 
-# リポジトリの情報
-codebuild_initiator = os.environ["CODEBUILD_INITIATOR"]
-if codebuild_initiator.startswith("codepipeline/"):
-    # AWS CodePipelineから呼び出した場合、パイプラインのステージ環境変数から取得
-    full_repository_name = os.environ["CODEPIPELINE_FULL_REPOSITORY_NAME"]
-elif codebuild_initiator.startswith("GitHub-Hookshot/"):
-    # AWS CodeBuildから呼び出した場合、"github.com/" で分割し、右側の部分（可変部分）を取得
-    _, _, full_repository_name = os.environ["CODEBUILD_SRC_DIR"].rpartition(
-        "github.com/"
-    )
-else:
-    print(f"Error: Unsupported CODEBUILD_INITIATOR: {codebuild_initiator}")
-    sys.exit(1)
+def get_full_repository_name():
+    """Get GitHub repository info from environment variable"""
+    try:
+        # リポジトリの情報
+        codebuild_initiator = os.environ["CODEBUILD_INITIATOR"]
+        if codebuild_initiator.startswith("codepipeline/"):
+            # AWS CodePipelineから呼び出した場合、パイプラインのステージ環境変数から取得
+            return os.environ["CODEPIPELINE_FULL_REPOSITORY_NAME"]
+        elif codebuild_initiator.startswith("GitHub-Hookshot/"):
+            # AWS CodeBuildから呼び出した場合、"github.com/" で分割し、右側の部分（可変部分）を取得
+            _, _, full_repository_name = os.environ["CODEBUILD_SRC_DIR"].rpartition(
+                "github.com/"
+            )
+            return full_repository_name
+        else:
+            print(f"Error: Unsupported CODEBUILD_INITIATOR: {codebuild_initiator}")
+            sys.exit(1)
+    except KeyError as e:
+        print(f"Error: Required environment variable not found: {e}")
+        sys.exit(1)
 
-# AWS Secrets Managerのシークレット取得
-session = boto3.session.Session()
-client = session.client(
-    service_name="secretsmanager",
-    region_name=os.environ["AWS_REGION"],
-)
+
+def get_secrets_manager_client():
+    """Get AWS Secrets Manager client"""
+    try:
+        session = boto3.session.Session()
+        return session.client(
+            service_name="secretsmanager",
+            region_name=os.environ["AWS_REGION"],
+        )
+    except KeyError as e:
+        print(f"Error: Required environment variable not found: {e}")
+        sys.exit(1)
 
 
 def get_secret_value(secret_id):
-    """AWS Secrets Managerからシークレットを取得する"""
+    """Get secret value from AWS Secrets Manager"""
     try:
+        client = get_secrets_manager_client()
         response = client.get_secret_value(SecretId=secret_id)
         return response["SecretBinary"]
     except ClientError as e:
@@ -60,23 +71,31 @@ def get_secret_value(secret_id):
 
 
 def get_access_token(private_key):
-    """JWTアクセストークンをGitHubリクエストして取得する"""
-    now = int(time.time())
-    payload = {
-        "iat": now - 60,
-        "exp": now + (10 * 60),  # 有効期間10分
-        "iss": github_app_id,
-    }
-    jwt_token = jwt.encode(payload, private_key.decode(), algorithm="RS256")
+    """Get JWT access token from GitHub API request"""
+    try:
+        # GitHub Appの情報
+        github_app_id = os.environ["GITHUB_APP_ID"]
+        github_app_installation_id = os.environ["GITHUB_APP_INSTALLATION_ID"]
 
-    # インストールアクセストークンの取得
-    token_url = f"https://api.github.com/app/installations/{github_app_installation_id}/access_tokens"
-    headers = {
-        "Authorization": f"Bearer {jwt_token}",
-        "Accept": "application/vnd.github+json",
-    }
-    response = requests.post(token_url, headers=headers, timeout=60.0)
-    return response.json()["token"]
+        now = int(time.time())
+        payload = {
+            "iat": now - 60,
+            "exp": now + (10 * 60),  # 有効期間10分
+            "iss": github_app_id,
+        }
+        jwt_token = jwt.encode(payload, private_key.decode(), algorithm="RS256")
+
+        # インストールアクセストークンの取得
+        token_url = f"https://api.github.com/app/installations/{github_app_installation_id}/access_tokens"
+        headers = {
+            "Authorization": f"Bearer {jwt_token}",
+            "Accept": "application/vnd.github+json",
+        }
+        response = requests.post(token_url, headers=headers, timeout=60.0)
+        return response.json()["token"]
+    except KeyError as e:
+        print(f"Error: Required environment variable not found: {e}")
+        sys.exit(1)
 
 
 def create_check_runs(
@@ -89,62 +108,76 @@ def create_check_runs(
     text=None,
 ):
     """Check Runsを作成する"""
-    check_run_payload = {
-        "name": name,
-        "head_sha": os.environ["CODEBUILD_RESOLVED_SOURCE_VERSION"],
-    }
-    if status is not None:
-        check_run_payload["status"] = status
-    if conclusion is not None:
-        check_run_payload["conclusion"] = conclusion
-    if title is not None:
-        check_run_payload["output"] = {"title": title}
-    if summary is not None:
-        check_run_payload["output"]["summary"] = summary
-    if text is not None:
-        check_run_payload["output"]["text"] = text
+    try:
+        full_repository_name = get_full_repository_name()
+        check_run_payload = {
+            "name": name,
+            "head_sha": os.environ["CODEBUILD_RESOLVED_SOURCE_VERSION"],
+        }
+        if status is not None:
+            check_run_payload["status"] = status
+        if conclusion is not None:
+            check_run_payload["conclusion"] = conclusion
+        if title is not None:
+            check_run_payload["output"] = {"title": title}
+        if summary is not None:
+            if "output" in check_run_payload:
+                check_run_payload["output"]["summary"] = summary
+        if text is not None:
+            if "output" in check_run_payload:
+                check_run_payload["output"]["text"] = text
 
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Accept": "application/vnd.github+json",
-        "Content-Type": "application/json",
-    }
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
+        }
 
-    response = requests.post(
-        f"https://api.github.com/repos/{full_repository_name}/check-runs",
-        headers=headers,
-        json=check_run_payload,
-        timeout=60.0,
-    )
+        response = requests.post(
+            f"https://api.github.com/repos/{full_repository_name}/check-runs",
+            headers=headers,
+            json=check_run_payload,
+            timeout=60.0,
+        )
 
-    if response.status_code == 201:
-        print("チェックランの作成に成功しました。")
-        print(response.json())
-    else:
-        print(f"エラーが発生しました: {response.status_code}")
-        print(response.json())
+        if response.status_code == 201:
+            print("チェックランの作成に成功しました。")
+            print(response.json())
+        else:
+            print(f"エラーが発生しました: {response.status_code}")
+            print(response.json())
+    except KeyError as e:
+        print(f"Error: Required environment variable not found: {e}")
+        sys.exit(1)
 
 
 def main():
     """メイン処理"""
-    private_key = get_secret_value(os.environ["SECRETS_MANAGER_SECRETID"])
-    access_token = get_access_token(private_key)
+    try:
+        private_key = get_secret_value(os.environ["SECRETS_MANAGER_SECRETID"])
+        access_token = get_access_token(private_key)
 
-    kwargs = {}
-    kwargs["name"] = sys.argv[1]
-    if sys.argv[2] is not None:
-        kwargs["status"] = sys.argv[2]
-    if len(sys.argv) > 3 and sys.argv[3]:
-        kwargs["conclusion"] = sys.argv[3]
-    if len(sys.argv) > 4 and sys.argv[4]:
-        kwargs["title"] = sys.argv[4]
-    if len(sys.argv) > 5 and sys.argv[5]:
-        kwargs["summary"] = sys.argv[5]
-    if len(sys.argv) > 6 and sys.argv[6]:
-        kwargs["text"] = sys.argv[6]
+        kwargs = {}
+        kwargs["name"] = sys.argv[1]
+        if len(sys.argv) > 2 and sys.argv[2]:
+            kwargs["status"] = sys.argv[2]
+        if len(sys.argv) > 3 and sys.argv[3]:
+            kwargs["conclusion"] = sys.argv[3]
+        if len(sys.argv) > 4 and sys.argv[4]:
+            kwargs["title"] = sys.argv[4]
+        if len(sys.argv) > 5 and sys.argv[5]:
+            kwargs["summary"] = sys.argv[5]
+        if len(sys.argv) > 6 and sys.argv[6]:
+            kwargs["text"] = sys.argv[6]
 
-    create_check_runs(access_token, **kwargs)
+        create_check_runs(access_token, **kwargs)
+    except IndexError:
+        print("Error: Not enough arguments provided")
+        print(
+            "Usage: prcb-checks <name> <status> [conclusion] [title] [summary] [text]"
+        )
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    main()  # pragma: no cover

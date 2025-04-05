@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "prcb-checks"
-version = "0.1.0"
+version = "0.1.1"
 description = "Helper command to invoke GitHub Checks API when AWS CodeBuild is executed from GitHub via AWS CodeConnections"
 authors = [
     {name = "neruneruo", email = "rkubota.neru@gmail.com"},
@@ -23,6 +23,13 @@ repository = "https://github.com/neruneruo/prcb-checks"
 
 [project.scripts]
 prcb-checks = "prcb_checks.main:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-mock"
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
