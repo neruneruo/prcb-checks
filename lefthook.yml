@@ -3,3 +3,5 @@ pre-commit:
   commands:
     trivy:
       run: trivy fs --scanners secret --exit-code 1 ./
+    pytest:
+      run: pytest --cov=prcb_checks --cov-report=term-missing
