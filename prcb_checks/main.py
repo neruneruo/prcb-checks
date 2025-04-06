@@ -14,14 +14,17 @@
 # summary   : The summary of the check run. This parameter supports Markdown.
 # text      : The details of the check run. This parameter supports Markdown.
 
-import sys
+import optparse
 import os
 import time
+import sys
 
 import requests
 import boto3
 from botocore.exceptions import ClientError
 import jwt
+
+from prcb_checks.logger import logger, set_debug_mode
 
 
 def get_full_repository_name():
@@ -39,10 +42,12 @@ def get_full_repository_name():
             )
             return full_repository_name
         else:
-            print(f"Error: Unsupported CODEBUILD_INITIATOR: {codebuild_initiator}")
+            logger.error(
+                f"Error: Unsupported CODEBUILD_INITIATOR: {codebuild_initiator}"
+            )
             sys.exit(1)
     except KeyError as e:
-        print(f"Error: Required environment variable not found: {e}")
+        logger.error(f"Error: Required environment variable not found: {e}")
         sys.exit(1)
 
 
@@ -55,7 +60,7 @@ def get_secrets_manager_client():
             region_name=os.environ["AWS_REGION"],
         )
     except KeyError as e:
-        print(f"Error: Required environment variable not found: {e}")
+        logger.error(f"Error: Required environment variable not found: {e}")
         sys.exit(1)
 
 
@@ -66,7 +71,7 @@ def get_secret_value(secret_id):
         response = client.get_secret_value(SecretId=secret_id)
         return response["SecretBinary"]
     except ClientError as e:
-        print(f"get_secret_value() error: {e}")
+        logger.error(f"get_secret_value() error: {e}")
         raise e
 
 
@@ -94,7 +99,7 @@ def get_access_token(private_key):
         response = requests.post(token_url, headers=headers, timeout=60.0)
         return response.json()["token"]
     except KeyError as e:
-        print(f"Error: Required environment variable not found: {e}")
+        logger.error(f"Error: Required environment variable not found: {e}")
         sys.exit(1)
 
 
@@ -141,40 +146,58 @@ def create_check_runs(
         )
 
         if response.status_code == 201:
-            print("チェックランの作成に成功しました。")
-            print(response.json())
+            logger.debug("Succeeded create check-runs.")
+            logger.debug(response.json())
         else:
-            print(f"エラーが発生しました: {response.status_code}")
-            print(response.json())
+            logger.error(f"Error creating check-runs: {response.status_code}")
+            logger.debug(response.json())
     except KeyError as e:
-        print(f"Error: Required environment variable not found: {e}")
+        logger.error(f"Error: Required environment variable not found: {e}")
         sys.exit(1)
 
 
+def parse_options():
+    parser = optparse.OptionParser()
+    parser.add_option(
+        "-d",
+        "--debug",
+        dest="debug",
+        default=False,
+        help="Enable debug mode with verbose output",
+    )
+
+    return parser.parse_args()
+
+
 def main():
-    """メイン処理"""
+    """Main entry point."""
+
+    options, args = parse_options()
+
+    set_debug_mode(options.debug)
+
     try:
         private_key = get_secret_value(os.environ["SECRETS_MANAGER_SECRETID"])
         access_token = get_access_token(private_key)
 
         kwargs = {}
-        kwargs["name"] = sys.argv[1]
-        if len(sys.argv) > 2 and sys.argv[2]:
-            kwargs["status"] = sys.argv[2]
-        if len(sys.argv) > 3 and sys.argv[3]:
-            kwargs["conclusion"] = sys.argv[3]
-        if len(sys.argv) > 4 and sys.argv[4]:
-            kwargs["title"] = sys.argv[4]
-        if len(sys.argv) > 5 and sys.argv[5]:
-            kwargs["summary"] = sys.argv[5]
-        if len(sys.argv) > 6 and sys.argv[6]:
-            kwargs["text"] = sys.argv[6]
+        kwargs["name"] = args[0]
+        if len(args) > 1 and args[1]:
+            kwargs["status"] = args[1]
+        if len(args) > 2 and args[2]:
+            kwargs["conclusion"] = args[2]
+        if len(args) > 3 and args[3]:
+            kwargs["title"] = args[3]
+        if len(args) > 4 and args[4]:
+            kwargs["summary"] = args[4]
+        if len(args) > 5 and args[5]:
+            kwargs["text"] = args[5]
 
         create_check_runs(access_token, **kwargs)
     except IndexError:
-        print("Error: Not enough arguments provided")
-        print(
-            "Usage: prcb-checks <name> <status> [conclusion] [title] [summary] [text]"
+        logger.error("Error: Not enough arguments provided.")
+        logger.info(
+            "Usage: %prog <name> <status> [conclusion] [title] [summary] [text]"
         )
         sys.exit(1)
 
