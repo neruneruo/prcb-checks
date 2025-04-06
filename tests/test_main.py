@@ -269,6 +269,37 @@ class TestMainFunction:
         assert "conclusion" not in payload
         assert payload["output"]["title"] == "Test Title"
 
+    @patch(
+        "sys.argv",
+        [
+            "prcb-checks",
+            "--debug",
+            "test-check",
+            "completed",
+            "success",
+            "Test Title",
+            "Test Summary",
+            "Test Text",
+        ],
+    )
+    def test_main_with_all_arguments_and_debug(
+        self, mock_environ, mock_boto3_client, mock_jwt, mock_requests
+    ):
+        """debug mode test"""
+        mock_post, _ = mock_requests
+
+        # テスト実行
+        main()
+
+        # チェックランの作成が正しく呼び出されていることを確認
+        payload = mock_post.call_args[1]["json"]
+        assert payload["name"] == "test-check"
+        assert payload["status"] == "completed"
+        assert payload["conclusion"] == "success"
+        assert payload["output"]["title"] == "Test Title"
+        assert payload["output"]["summary"] == "Test Summary"
+        assert payload["output"]["text"] == "Test Text"
+
     @patch("sys.argv", ["prcb-checks"])
     def test_main_with_some_none_arguments(
         self, mock_environ, mock_boto3_client, mock_jwt, mock_requests

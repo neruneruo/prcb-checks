@@ -161,6 +161,7 @@ def parse_options():
     parser.add_option(
         "-d",
         "--debug",
+        action="store_true",
         dest="debug",
         default=False,
         help="Enable debug mode with verbose output",
@@ -175,6 +176,7 @@ def main():
     options, args = parse_options()
 
     set_debug_mode(options.debug)
+    logger.info(f"ARGS: {args}")
 
     try:
         private_key = get_secret_value(os.environ["SECRETS_MANAGER_SECRETID"])
