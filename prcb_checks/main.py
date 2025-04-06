@@ -176,7 +176,7 @@ def main():
     options, args = parse_options()
 
     set_debug_mode(options.debug)
-    logger.info(f"ARGS: {args}")
+    logger.debug(f"ARGS: {args}")
 
     try:
         private_key = get_secret_value(os.environ["SECRETS_MANAGER_SECRETID"])
