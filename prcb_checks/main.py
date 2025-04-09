@@ -156,6 +156,22 @@ def create_check_runs(
         sys.exit(1)
 
 
+def read_file_content(file_path):
+    """
+    Read file content from a file path
+    Args:
+        file_path (str): Path of the file to read
+    Returns:
+        str: Content of the file
+    """
+    try:
+        with open(file_path, "r", encoding="utf-8") as file:
+            return file.read()
+    except Exception as e:
+        print(f"Error reading file {file_path}: {e}")
+        sys.exit(1)
+
+
 def parse_options():
     parser = optparse.OptionParser()
     parser.add_option(
@@ -172,6 +188,7 @@ def parse_options():
 
 def main():
     """Main entry point."""
+    TEXT_FILE_PREFIX = "file://"
 
     options, args = parse_options()
 
@@ -193,7 +210,15 @@ def main():
         if len(args) > 4 and args[4]:
             kwargs["summary"] = args[4]
         if len(args) > 5 and args[5]:
-            kwargs["text"] = args[5]
+            text_arg = args[5]
+            if text_arg.startswith(TEXT_FILE_PREFIX):
+                # fmt: off
+                file_path = text_arg[len(TEXT_FILE_PREFIX):]
+                # fmt: on
+                kwargs["text"] = read_file_content(file_path)
+            else:
+                # 通常のテキスト
+                kwargs["text"] = text_arg
 
         create_check_runs(access_token, **kwargs)
     except IndexError:
