@@ -235,6 +235,50 @@ class TestMainFunction:
         assert payload["output"]["summary"] == "Test Summary"
         assert payload["output"]["text"] == "Test Text"
 
+    def test_main_with_all_arguments_with_file(
+        self, mock_environ, mock_boto3_client, mock_jwt, mock_requests, tmp_path
+    ):
+        """すべての引数が指定された場合のメイン関数のテスト(textはfile://プレフィックス)"""
+        # テスト用のファイルを作成
+        test_file = tmp_path / "check_content.txt"
+        test_content = (
+            "## Test Report\n\nThis is a detailed report with **markdown** formatting."
+        )
+        test_file.write_text(test_content)
+
+        mock_post, _ = mock_requests
+
+        # テスト実行
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "prcb-checks",
+                "test-check",
+                "completed",
+                "success",
+                "Test Title",
+                "Test Summary",
+                f"file://{test_file}",
+            ],
+        ):
+            main()
+
+        # シークレットが取得されていることを確認
+        mock_boto3_client.get_secret_value.assert_called_once_with(
+            SecretId="github-app-private-key"
+        )
+
+        # チェックランの作成が正しく呼び出されていることを確認
+        mock_post.assert_called()
+        payload = mock_post.call_args[1]["json"]
+        assert payload["name"] == "test-check"
+        assert payload["status"] == "completed"
+        assert payload["conclusion"] == "success"
+        assert payload["output"]["title"] == "Test Title"
+        assert payload["output"]["summary"] == "Test Summary"
+        assert payload["output"]["text"] == test_content
+
     @patch("sys.argv", ["prcb-checks", "test-check", "queued"])
     def test_main_with_minimal_arguments(
         self, mock_environ, mock_boto3_client, mock_jwt, mock_requests
@@ -310,6 +354,38 @@ class TestMainFunction:
         # テスト実行
         with pytest.raises(SystemExit) as excinfo:
             main()
+
+
+class TestReadFileContent:
+    """ファイル読み込み機能のテスト"""
+
+    def test_read_file_content(self, tmp_path):
+        # テスト用のファイルを作成
+        test_file = tmp_path / "test_content.txt"
+        test_content = "This is a test content\nwith multiple lines\nfor testing."
+        test_file.write_text(test_content)
+
+        # ファイル読み込み関数をテスト
+        from prcb_checks.main import read_file_content
+
+        result = read_file_content(str(test_file))
+
+        assert result == test_content
+
+    @patch("sys.exit")
+    def test_read_file_content_exception(self, mock_exit, tmp_path):
+        """ファイル読み込み例外のテスト"""
+        # 存在しないファイルパスを指定
+        non_existent_file = tmp_path / "non_existent_file.txt"
+
+        # モックの設定
+        from prcb_checks.main import read_file_content
+
+        # 例外が発生することを確認
+        read_file_content(str(non_existent_file))
+
+        # sys.exitが呼び出されたことを確認
+        mock_exit.assert_called_once_with(1)
 
 
 class TestEnvironmentInitialization:
