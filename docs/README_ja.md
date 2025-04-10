@@ -8,7 +8,7 @@ prcb-checks は、AWS CodeBuild が GitHub から AWS CodeConnections 経由で�
 ## インストール方法
 
 ```
-pip install prcb-checks
+pip install https://github.com/neruneruo/prcb-checks/releases/download/v0.1.3/prcb_checks-0.1.3.tar.gz
 ```
 
 開発モードでインストールする場合は以下を使用します：
@@ -57,9 +57,9 @@ prcb-checks <name> [status] [conclusion] [title] [summary] [text]
 
 | 引数 | 必須 | 説明 |
 |----------|----------|-------------|
-| name | はい | チェックの名前。例: "code-coverage" |
-| status | いいえ | チェック実行の現在の状態。オプション: queued, in_progress, completed, waiting, requested, pending。デフォルト: queued |
-| conclusion | いいえ | チェックの最終結論 (status が completed の場合は必須)。オプション: action_required, cancelled, failure, neutral, success, skipped, timed_out |
+| name | はい | チェックの名前<br>例: "code-coverage" |
+| status | いいえ | チェック実行の現在の状態<br>オプション: queued, in_progress, completed, waiting, requested, pending<br>デフォルト: queued |
+| conclusion | いいえ | チェックの最終結論 (status が completed の場合は必須)<br>オプション: action_required, cancelled, failure, neutral, success, skipped, timed_out |
 | title | いいえ | チェック実行のタイトル |
 | summary | いいえ | チェック実行の要約 (Markdown 形式対応) |
 | text | いいえ | チェック実行の詳細 (Markdown 形式対応) |
@@ -77,7 +77,7 @@ prcb-checks <name> [status] [conclusion] [title] [summary] [text]
 テキストが長い場合、`file://` プレフィックスを使用してファイルを参照できます：
 
 ```
-prcb-checks "Lint Report" completed failure "Lint Errors" "問題が見つかりました" file:///path/to/report.txt
+prcb-checks "Lint Report" completed failure "Lint Errors" "Found issues" file:///path/to/report.txt
 ```
 
 これにより `/path/to/report.txt` の内容を読み込み、text パラメータとして使用します。
@@ -101,24 +101,24 @@ phases:
     runtime-versions:
       python: 3.11
     commands:
-      - pip install prcb-checks
+      - pip install https://github.com/neruneruo/prcb-checks/releases/download/v0.1.3/prcb_checks-0.1.3.tar.gz
   
   pre_build:
     commands:
-      - prcb-checks "ビルドチェック" in_progress
+      - prcb-checks "Build Check" in_progress
 
   build:
     commands:
-      - echo "ビルドステップの実行中..."
-      # ビルドコマンドをここに記述
+      - echo "Running build steps..."
+      # Your build commands here
       
   post_build:
     commands:
       - |
         if [ $CODEBUILD_BUILD_SUCCEEDING -eq 1 ]; then
-          prcb-checks "ビルドチェック" completed success "ビルド成功" "ビルドは正常に完了しました。"
+          prcb-checks "Build Check" completed success "Build Successful" "The build completed successfully."
         else
-          prcb-checks "ビルドチェック" completed failure "ビルド失敗" "ビルド中にエラーが発生しました。"
+          prcb-checks "Build Check" completed failure "Build Failed" "The build encountered errors."
         fi
 ```
 
