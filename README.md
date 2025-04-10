@@ -11,7 +11,7 @@ Helper command to invoke GitHub Checks API when AWS CodeBuild is executed from G
 ## Quick Installation
 
 ```
-pip install prcb-checks
+pip install https://github.com/neruneruo/prcb-checks/releases/download/v0.1.3/prcb_checks-0.1.3.tar.gz
 ```
 
 See the detailed documentation for complete installation and usage instructions.
