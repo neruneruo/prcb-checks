@@ -473,6 +473,30 @@ class TestMainFunction:
         with pytest.raises(SystemExit) as excinfo:
             main()
 
+    @patch(
+        "sys.argv",
+        [
+            "prcb-checks",
+            "test-check",
+            "completed",
+            "success",
+            "Test Title",
+            "Test Summary",
+            "Test Text",
+            '[{"path": "src/main.py" "start_line": 10, "end_line": 10, "annotation_level": "warning", "message": "Test Message"}]',
+        ],
+    )
+    def test_main_with_annotations_invalid_json(
+        self, mock_environ, mock_boto3_client, mock_jwt, mock_requests
+    ):
+        """アノテーションJSON文字列を含むメイン関数のテスト(JSONパースエラー)"""
+        mock_post, _ = mock_requests
+
+        # チェックランの作成が正しく呼び出されていることを確認
+        # テスト実行
+        with pytest.raises(SystemExit) as excinfo:
+            main()
+
 
 class TestReadFileContent:
     """ファイル読み込み機能のテスト"""
