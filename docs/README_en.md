@@ -50,7 +50,7 @@ prcb-checks requires the following environment variables:
 Basic command structure:
 
 ```
-prcb-checks <name> [status] [conclusion] [title] [summary] [text]
+prcb-checks <name> [status] [conclusion] [title] [summary] [text] [annotations]
 ```
 
 ### Command Line Arguments
@@ -63,6 +63,7 @@ prcb-checks <name> [status] [conclusion] [title] [summary] [text]
 | title | No | Title of the check run |
 | summary | No | Summary of the check run (supports Markdown) |
 | text | No | Details of the check run (supports Markdown) |
+| annotations | No | JSON array of annotation objects to highlight specific lines in files with issues (supports file:// prefix) |
 
 ### Options
 
@@ -81,6 +82,52 @@ prcb-checks "Lint Report" completed failure "Lint Errors" "Found issues" file://
 ```
 
 This will read the contents of `/path/to/report.txt` and use it as the text parameter.
+
+#### Using Annotations
+
+Annotations allow you to highlight specific issues in files with line-level precision. You can provide annotations as a JSON array:
+
+```
+prcb-checks "Lint Check" completed failure "Lint Results" "Found issues" "Details here" '[{"path":"src/main.py","start_line":42,"end_line":42,"annotation_level":"warning","message":"Variable foo is not used"}]'
+```
+
+For multiple annotations, it's more convenient to use a file:
+
+```
+prcb-checks "Lint Check" completed failure "Lint Results" "Found issues" "Details here" file:///path/to/annotations.json
+```
+
+Example annotations.json file:
+```json
+[
+  {
+    "path": "src/main.py",
+    "start_line": 42,
+    "end_line": 42,
+    "annotation_level": "warning",
+    "message": "Variable 'foo' is not used",
+    "title": "Unused Variable"
+  },
+  {
+    "path": "src/utils.py",
+    "start_line": 27,
+    "end_line": 29,
+    "annotation_level": "failure",
+    "message": "Syntax error: missing closing parenthesis",
+    "title": "Syntax Error",
+    "raw_details": "Optional additional details about the error"
+  }
+]
+```
+
+Annotation properties:
+- `path`: File path relative to repository root
+- `start_line`: Starting line number for the annotation
+- `end_line`: Ending line number for the annotation
+- `annotation_level`: Severity level - "notice", "warning", or "failure"
+- `message`: Short description of the issue
+- `title` (optional): Title for the annotation
+- `raw_details` (optional): Additional details about the issue
 
 ## Integration with AWS CodeBuild
 
