@@ -35,14 +35,14 @@ prcb-checks を使用するには以下が必要です：
 prcb-checks には以下の環境変数が必要です：
 
 | 変数名 | 説明 |
-|----------|-------------|
+|--------|------------|
 | GITHUB_APP_ID | GitHub App の ID |
 | GITHUB_APP_INSTALLATION_ID | GitHub App のインストール ID |
 | SECRETS_MANAGER_SECRETID | GitHub App の秘密鍵を含む AWS Secrets Manager のシークレット ID |
 | AWS_REGION | Secrets Manager の AWS リージョン |
 | CODEBUILD_RESOLVED_SOURCE_VERSION | Git コミット SHA (CodeBuild によって自動設定) |
 | CODEBUILD_INITIATOR | CodeBuild のトリガーソース (CodeBuild によって自動設定) |
-| CODEBUILD_SRC_DIR | ソースディレクトリ (GitHub からトリガーされたビルド用) |
+| CODEBUILD_SRC_DIR | ソースディレクトリ (GitHubからトリガーされたビルド用) |
 | CODEPIPELINE_FULL_REPOSITORY_NAME | 完全なリポジトリ名 (CodePipeline からトリガーされたビルド用) |
 
 ## 使用方法
@@ -50,7 +50,7 @@ prcb-checks には以下の環境変数が必要です：
 基本的なコマンド構造：
 
 ```
-prcb-checks <name> [status] [conclusion] [title] [summary] [text]
+prcb-checks <name> [status] [conclusion] [title] [summary] [text] [annotations]
 ```
 
 ### コマンドライン引数
@@ -63,12 +63,13 @@ prcb-checks <name> [status] [conclusion] [title] [summary] [text]
 | title | いいえ | チェック実行のタイトル |
 | summary | いいえ | チェック実行の要約 (Markdown 形式対応) |
 | text | いいえ | チェック実行の詳細 (Markdown 形式対応) |
+| annotations | いいえ | ファイル内の特定の行に問題を表示するためのアノテーションオブジェクトのJSON配列 (file:// プレフィックス対応) |
 
 ### オプション
 
 | オプション | 説明 |
 |--------|-------------|
-| -d, --debug | 詳細な出力を含むデバッグモードを有効にする |
+| -d, --debug | 詳細出力を含むデバッグモードを有効にする |
 
 ### 高度な使用方法
 
@@ -80,7 +81,53 @@ prcb-checks <name> [status] [conclusion] [title] [summary] [text]
 prcb-checks "Lint Report" completed failure "Lint Errors" "Found issues" file:///path/to/report.txt
 ```
 
-これにより `/path/to/report.txt` の内容を読み込み、text パラメータとして使用します。
+これにより、`/path/to/report.txt` の内容を読み込み、text パラメータとして使用します。
+
+#### アノテーションの使用
+
+アノテーションを使用すると、ファイル内の特定の行に問題を正確に表示できます。JSONの配列として提供できます：
+
+```
+prcb-checks "Lint Check" completed failure "Lint Results" "問題が見つかりました" "詳細はこちら" '[{"path":"src/main.py","start_line":42,"end_line":42,"annotation_level":"warning","message":"変数 foo は使用されていません"}]'
+```
+
+多くのアノテーションがある場合は、ファイルを使用する方が便利です：
+
+```
+prcb-checks "Lint Check" completed failure "Lint Results" "問題が見つかりました" "詳細はこちら" file:///path/to/annotations.json
+```
+
+annotations.json ファイルの例：
+```json
+[
+  {
+    "path": "src/main.py",
+    "start_line": 42,
+    "end_line": 42,
+    "annotation_level": "warning",
+    "message": "変数 'foo' は使用されていません",
+    "title": "未使用変数"
+  },
+  {
+    "path": "src/utils.py",
+    "start_line": 27,
+    "end_line": 29,
+    "annotation_level": "failure",
+    "message": "構文エラー：閉じ括弧がありません",
+    "title": "構文エラー",
+    "raw_details": "エラーに関する追加の詳細情報"
+  }
+]
+```
+
+アノテーションのプロパティ：
+- `path`: リポジトリルートからの相対ファイルパス
+- `start_line`: アノテーションの開始行番号
+- `end_line`: アノテーションの終了行番号
+- `annotation_level`: 重要度レベル - "notice", "warning", "failure" のいずれか
+- `message`: 問題の簡単な説明
+- `title` (オプション): アノテーションのタイトル
+- `raw_details` (オプション): 問題に関する追加の詳細情報
 
 ## AWS CodeBuild との連携
 
@@ -156,7 +203,7 @@ python -m build
 
 ## GitHub Checks API 連携
 
-prcb-checks は GitHub Check Runs を API 経由で作成するプロセスを簡素化します。このツールは以下を処理します：
+prcb-checks は GitHub Check Runs を API 経由で作成するプロセスを簡単化します。このツールは以下を処理します：
 
 1. GitHub App を使用した GitHub API との認証
 2. AWS Secrets Manager からの秘密鍵の取得
