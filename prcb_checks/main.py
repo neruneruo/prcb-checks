@@ -1,19 +1,21 @@
 """PRCB checks - Invoke GitHub Checks API"""
 
 # https://docs.github.com/ja/rest/checks/runs?apiVersion=2022-11-28#create-a-check-run
-# checkruns.py <n> <status:conclusion> <title> <summary> <text>
-# name      : The name of the check. For example, "code-coverage".
-# status    : The current status of the check run. Only GitHub Actions can set a status of waiting, pending, or requested.
-#             Default: queue
-#             You can set queued, in_progress, completed, waiting, requested, pending
-# conclusion: Required if you provide completed_at or a status of completed. The final conclusion of the check.
-#             Note: Providing conclusion will automatically set the status parameter to completed.
-#             You cannot change a check run conclusion to stale, only GitHub can set this.
-#             You can set action_required, cancelled, failure, neutral, success, skipped, stale, timed_out
-# title     : The title of the check run.
-# summary   : The summary of the check run. This parameter supports Markdown.
-# text      : The details of the check run. This parameter supports Markdown.
+# checkruns.py <n> <status:conclusion> <title> <summary> <text> [annotations]
+# name        : The name of the check. For example, "code-coverage".
+# status      : The current status of the check run. Only GitHub Actions can set a status of waiting, pending, or requested.
+#                 Default: queue
+#                 You can set queued, in_progress, completed, waiting, requested, pending
+# conclusion  : Required if you provide completed_at or a status of completed. The final conclusion of the check.
+#                 Note: Providing conclusion will automatically set the status parameter to completed.
+#                 You cannot change a check run conclusion to stale, only GitHub can set this.
+#                 You can set action_required, cancelled, failure, neutral, success, skipped, stale, timed_out
+# title       : The title of the check run.
+# summary     : The summary of the check run. This parameter supports Markdown.
+# text        : The details of the check run. This parameter supports Markdown.
+# annotations : JSON array of annotation objects. If starts with file://, read from file.
 
+import json
 import optparse
 import os
 import time
@@ -36,7 +38,7 @@ def get_full_repository_name():
             # AWS CodePipelineから呼び出した場合、パイプラインのステージ環境変数から取得
             return os.environ["CODEPIPELINE_FULL_REPOSITORY_NAME"]
         elif codebuild_initiator.startswith("GitHub-Hookshot/"):
-            # AWS CodeBuildから呼び出した場合、"github.com/" で分割し、右側の部分（可変部分）を取得
+            # AWS CodeBuildから呼び出した場合、"github.com/" で分割し、後ろの部分（可変部分）を取得
             _, _, full_repository_name = os.environ["CODEBUILD_SRC_DIR"].rpartition(
                 "github.com/"
             )
@@ -111,6 +113,7 @@ def create_check_runs(
     title=None,
     summary=None,
     text=None,
+    annotations=None,
 ):
     """Check Runsを作成する"""
     try:
@@ -131,6 +134,9 @@ def create_check_runs(
         if text is not None:
             if "output" in check_run_payload:
                 check_run_payload["output"]["text"] = text
+        if annotations is not None:
+            if "output" in check_run_payload:
+                check_run_payload["output"]["annotations"] = annotations
 
         headers = {
             "Authorization": f"Bearer {access_token}",
@@ -169,6 +175,22 @@ def read_file_content(file_path):
             return file.read()
     except Exception as e:
         print(f"Error reading file {file_path}: {e}")
+        sys.exit(1)
+
+
+def parse_json_file(file_path):
+    """
+    Parse JSON content from a file
+    Args:
+        file_path (str): Path of the JSON file to read
+    Returns:
+        dict/list: Parsed JSON content
+    """
+    try:
+        content = read_file_content(file_path)
+        return json.loads(content)
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing JSON in file {file_path}: {e}")
         sys.exit(1)
 
 
@@ -219,12 +241,28 @@ def main():
             else:
                 # 通常のテキスト
                 kwargs["text"] = text_arg
+                
+        # Handle annotations parameter if provided
+        if len(args) > 6 and args[6]:
+            annotations_arg = args[6]
+            if annotations_arg.startswith(TEXT_FILE_PREFIX):
+                # Read annotations from file
+                file_path = annotations_arg[len(TEXT_FILE_PREFIX):]
+                annotations = parse_json_file(file_path)
+                kwargs["annotations"] = annotations
+            else:
+                # Parse JSON string directly
+                try:
+                    kwargs["annotations"] = json.loads(annotations_arg)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error parsing annotations JSON: {e}")
+                    sys.exit(1)
 
         create_check_runs(access_token, **kwargs)
     except IndexError:
         logger.error("Error: Not enough arguments provided.")
         logger.info(
-            "Usage: %prog <name> <status> [conclusion] [title] [summary] [text]"
+            "Usage: %prog <name> <status> [conclusion] [title] [summary] [text] [annotations]"
         )
         sys.exit(1)
 
