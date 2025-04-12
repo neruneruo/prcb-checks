@@ -3,6 +3,7 @@
 import os
 import sys
 import pytest
+import json
 from unittest.mock import patch, MagicMock, call
 
 from prcb_checks.main import (
@@ -10,6 +11,7 @@ from prcb_checks.main import (
     get_secret_value,
     get_access_token,
     create_check_runs,
+    parse_json_file,
     main,
 )
 
@@ -140,6 +142,43 @@ class TestCreateCheckRuns:
         assert payload["output"]["summary"] == "Test Summary"
         assert payload["output"]["text"] == "Test Text"
 
+    def test_create_check_runs_with_annotations(self, mock_requests, mock_environ):
+        """アノテーションを含めてチェックランを作成するケース"""
+        mock_post, mock_response = mock_requests
+
+        annotations = [
+            {
+                "path": "src/main.py",
+                "start_line": 42,
+                "end_line": 42,
+                "annotation_level": "warning",
+                "message": "Variable foo is not used",
+                "title": "Unused Variable",
+            }
+        ]
+
+        # テスト実行
+        create_check_runs(
+            "mock-access-token",
+            "test-check",
+            status="completed",
+            conclusion="failure",
+            title="Test Title",
+            summary="Test Summary",
+            text="Test Text",
+            annotations=annotations,
+        )
+
+        # ペイロードの確認
+        payload = mock_post.call_args[1]["json"]
+        assert payload["name"] == "test-check"
+        assert payload["status"] == "completed"
+        assert payload["conclusion"] == "failure"
+        assert payload["output"]["title"] == "Test Title"
+        assert payload["output"]["summary"] == "Test Summary"
+        assert payload["output"]["text"] == "Test Text"
+        assert payload["output"]["annotations"] == annotations
+
     def test_create_check_runs_non_complete(self, mock_requests, mock_environ):
         """すべてのパラメータを指定してチェックランを作成するケース"""
         mock_post, mock_response = mock_requests
@@ -235,6 +274,42 @@ class TestMainFunction:
         assert payload["output"]["summary"] == "Test Summary"
         assert payload["output"]["text"] == "Test Text"
 
+    @patch(
+        "sys.argv",
+        [
+            "prcb-checks",
+            "test-check",
+            "completed",
+            "success",
+            "Test Title",
+            "Test Summary",
+            "Test Text",
+            '[{"path": "src/main.py", "start_line": 10, "end_line": 10, "annotation_level": "warning", "message": "Test Message"}]',
+        ],
+    )
+    def test_main_with_annotations_json(
+        self, mock_environ, mock_boto3_client, mock_jwt, mock_requests
+    ):
+        """アノテーションJSON文字列を含むメイン関数のテスト"""
+        mock_post, _ = mock_requests
+
+        # テスト実行
+        main()
+
+        # チェックランの作成が正しく呼び出されていることを確認
+        mock_post.assert_called()
+        payload = mock_post.call_args[1]["json"]
+        assert payload["name"] == "test-check"
+        assert payload["output"]["annotations"] == [
+            {
+                "path": "src/main.py",
+                "start_line": 10,
+                "end_line": 10,
+                "annotation_level": "warning",
+                "message": "Test Message",
+            }
+        ]
+
     def test_main_with_all_arguments_with_file(
         self, mock_environ, mock_boto3_client, mock_jwt, mock_requests, tmp_path
     ):
@@ -278,6 +353,49 @@ class TestMainFunction:
         assert payload["output"]["title"] == "Test Title"
         assert payload["output"]["summary"] == "Test Summary"
         assert payload["output"]["text"] == test_content
+
+    def test_main_with_annotations_from_file(
+        self, mock_environ, mock_boto3_client, mock_jwt, mock_requests, tmp_path
+    ):
+        """ファイルからアノテーションを読み込むメイン関数のテスト"""
+        # テスト用のアノテーションJSONファイルを作成
+        test_file = tmp_path / "annotations.json"
+        test_annotations = [
+            {
+                "path": "src/main.py",
+                "start_line": 42,
+                "end_line": 42,
+                "annotation_level": "warning",
+                "message": "Variable foo is not used",
+                "title": "Unused Variable",
+            }
+        ]
+        test_file.write_text(json.dumps(test_annotations))
+
+        mock_post, _ = mock_requests
+
+        # テスト実行
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "prcb-checks",
+                "test-check",
+                "completed",
+                "failure",
+                "Test Title",
+                "Test Summary",
+                "Test Text",
+                f"file://{test_file}",
+            ],
+        ):
+            main()
+
+        # チェックランの作成が正しく呼び出されていることを確認
+        mock_post.assert_called()
+        payload = mock_post.call_args[1]["json"]
+        assert payload["name"] == "test-check"
+        assert payload["output"]["annotations"] == test_annotations
 
     @patch("sys.argv", ["prcb-checks", "test-check", "queued"])
     def test_main_with_minimal_arguments(
@@ -386,6 +504,36 @@ class TestReadFileContent:
 
         # sys.exitが呼び出されたことを確認
         mock_exit.assert_called_once_with(1)
+
+
+class TestJsonParsing:
+    """JSON解析機能のテスト"""
+
+    def test_parse_json_file(self, tmp_path):
+        """JSONファイルの解析のテスト"""
+        # テスト用のJSONファイルを作成
+        test_file = tmp_path / "test.json"
+        test_data = {
+            "items": [
+                {"id": 1, "name": "Item 1"},
+                {"id": 2, "name": "Item 2"},
+            ]
+        }
+        test_file.write_text(json.dumps(test_data))
+
+        # 関数のテスト
+        result = parse_json_file(str(test_file))
+        assert result == test_data
+
+    def test_parse_json_file_invalid(self, tmp_path):
+        """不正なJSONファイルの解析のテスト"""
+        # 不正なJSON形式のファイルを作成
+        test_file = tmp_path / "invalid.json"
+        test_file.write_text("This is not valid JSON")
+
+        # 不正なJSONの場合、エラーになることを確認
+        with pytest.raises(SystemExit) as excinfo:
+            parse_json_file(str(test_file))
 
 
 class TestEnvironmentInitialization:
