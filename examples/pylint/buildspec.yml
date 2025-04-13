@@ -1,0 +1,27 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - pip install pylint
+      - pip install https://github.com/neruneruo/prcb-checks/releases/download/v0.1.4/prcb_checks-0.1.4.tar.gz
+
+  pre_build:
+    commands:
+      - prcb-checks "Pylint" "queued"
+
+  build:
+    commands:
+      - prcb-checks "Pylint" "in_progress"
+      - |
+        set -o pipefail
+        pylint example.py --output-format=json | jq '[.[] | {path: .path, start_line: .line, end_line: (.endLine // .line), start_column: .column, annotation_level: "warning", message: (.["message-id"] + ": " + .message), title: .symbol} + (if .endColumn? != null then { end_column: .endColumn } else {} end)]' > pylint.json
+
+  post_build:
+    commands:
+      - |
+        if [ ${CODEBUILD_BUILD_SUCCEEDING} -eq 1 ]; then
+          prcb-checks "Pylint" "completed" "success" "pylint" "checks" "pylint test" file://pylint.json
+        else
+          prcb-checks "Pylint" "completed" "failure" "pylint" "checks" "pylint test" file://pylint.json
+        fi
