@@ -6,14 +6,12 @@ import pytest
 import json
 from unittest.mock import patch, MagicMock, call
 
-from prcb_checks.main import (
-    get_full_repository_name,
-    get_secret_value,
-    get_access_token,
-    create_check_runs,
-    parse_json_file,
-    main,
-)
+# Import from specific modules for better organization
+from prcb_checks.repository import get_full_repository_name
+from prcb_checks.aws_client import get_secret_value
+from prcb_checks.github_client import get_access_token, create_check_runs
+from prcb_checks.file_utils import parse_json_file
+from prcb_checks.main import main
 
 
 class TestGetSecretValue:
@@ -50,7 +48,7 @@ class TestGetSecretValue:
         with pytest.raises(ClientError):
             get_secret_value("invalid-secret-id")
 
-    @patch.dict(os.environ, {})
+    @patch.dict(os.environ, {}, clear=True)
     def test_missing_keys_of_dict(self):
         """環境変数が設定されていない場合のエラー処理"""
         with pytest.raises(SystemExit) as excinfo:
@@ -83,7 +81,7 @@ class TestGetAccessToken:
         # 戻り値が期待通りであることを確認
         assert result == "mock-token"
 
-    @patch.dict(os.environ, {})
+    @patch.dict(os.environ, {}, clear=True)
     def test_missing_keys_of_dict(self):
         """環境変数が設定されていない場合のエラー処理"""
         with pytest.raises(SystemExit) as excinfo:
